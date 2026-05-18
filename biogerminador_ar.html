@@ -9,42 +9,71 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; font-family: Arial, sans-serif; }
+    body { overflow: hidden; font-family: Arial, sans-serif; background: #000; }
 
+    /* HUD superior minimalista */
     #hud {
       position: fixed; top: 0; left: 0; right: 0; z-index: 999;
       display: flex; justify-content: space-between; align-items: center;
       padding: 10px 16px;
-      background: linear-gradient(180deg,rgba(0,0,0,0.8),transparent);
+      background: linear-gradient(180deg, rgba(0,0,0,0.75), transparent);
     }
-    #hud-title { color: #4ade80; font-size: 14px; font-weight: bold; letter-spacing: 2px; }
-    #mqtt-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #fff; }
-    #mqtt-dot { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; }
+    #hud-title { color: #4ade80; font-size: 13px; font-weight: bold; letter-spacing: 2px; }
+    #mqtt-status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #fff; }
+    #mqtt-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
     #mqtt-dot.on { background: #4ade80; animation: blink 2s infinite; }
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    #panel {
-      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-      z-index: 999; background: rgba(0,0,0,0.88);
-      border: 1.5px solid rgba(74,222,128,.4); border-radius: 16px;
-      padding: 14px 18px; min-width: 270px;
+    /* Botones de control flotantes abajo */
+    #controles {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 999; display: flex; gap: 12px;
     }
-    #panel h3 { color: #4ade80; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; text-align: center; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-    .card { background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 10px; }
-    .lbl { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; display: block; }
-    .val { font-size: 20px; font-weight: bold; color: #fff; display: block; }
-    .red { color: #ef4444; } .yellow { color: #f59e0b; } .green { color: #4ade80; }
-    .wide { grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; }
-    .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
-             background: rgba(74,222,128,.15); color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
-    .badge.m { background: rgba(245,158,11,.15); color: #f59e0b; border-color: rgba(245,158,11,.3); }
-    #hint { text-align: center; color: #475569; font-size: 10px; margin-top: 9px; }
+    .btn {
+      padding: 14px 22px; border: none; border-radius: 14px;
+      font-size: 14px; font-weight: bold; cursor: pointer;
+      backdrop-filter: blur(10px); transition: all 0.2s;
+      letter-spacing: 1px;
+    }
+    #btn-bomba {
+      background: rgba(96,165,250,0.2);
+      color: #60a5fa;
+      border: 1.5px solid rgba(96,165,250,0.5);
+    }
+    #btn-bomba.activa {
+      background: rgba(96,165,250,0.5);
+      color: #fff;
+      border-color: #60a5fa;
+    }
+    #btn-bomba.bloqueado {
+      background: rgba(100,116,139,0.2);
+      color: #64748b;
+      border-color: rgba(100,116,139,0.3);
+    }
+    #btn-modo {
+      background: rgba(74,222,128,0.2);
+      color: #4ade80;
+      border: 1.5px solid rgba(74,222,128,0.5);
+    }
+    #btn-modo.manual {
+      background: rgba(245,158,11,0.2);
+      color: #f59e0b;
+      border-color: rgba(245,158,11,0.5);
+    }
+
+    /* Hint apuntar marcador */
+    #hint {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 998; color: rgba(255,255,255,0.4);
+      font-size: 13px; text-align: center; pointer-events: none;
+    }
+
     .a-enter-vr, .a-enter-vr-button { display: none !important; }
   </style>
 </head>
 <body>
 
+<!-- HUD superior -->
 <div id="hud">
   <span id="hud-title">🌱 BIOGERMINADOR AR</span>
   <div id="mqtt-status">
@@ -53,114 +82,120 @@
   </div>
 </div>
 
-<div id="panel">
-  <h3>Datos en tiempo real</h3>
-  <div class="grid">
-    <div class="card"><span class="lbl">🌡 Temperatura</span><span class="val" id="vt">--°C</span></div>
-    <div class="card"><span class="lbl">💧 Hum. Aire</span><span class="val" id="va">--%</span></div>
-    <div class="card"><span class="lbl">🌱 Hum. Suelo</span><span class="val" id="vs">--%</span></div>
-    <div class="card"><span class="lbl">💦 Bomba</span><span class="val" id="vb">--</span></div>
-    <div class="card wide"><span class="lbl">⚙ Modo</span><span class="badge" id="vm">--</span></div>
-  </div>
-  <p id="hint">📷 Apunta al marcador Hiro</p>
+<!-- Hint central -->
+<div id="hint">📷 Apunta al marcador Hiro</div>
+
+<!-- Botones de control -->
+<div id="controles">
+  <button class="btn" id="btn-bomba" onclick="toggleBomba()">💦 BOMBA: --</button>
+  <button class="btn" id="btn-modo"  onclick="toggleModo()">⚙ MODO: --</button>
 </div>
 
+<!-- Escena AR — solo 3D, sin panel 2D -->
 <a-scene
   embedded
   arjs="sourceType: webcam; debugUIEnabled: false;"
   vr-mode-ui="enabled: false"
   renderer="antialias: true; alpha: true;"
 >
-  <a-marker preset="hiro">
+  <a-marker preset="hiro" id="marker"
+    emitevents="true"
+    cursor="rayOrigin: mouse">
 
     <!-- Fondo del panel -->
     <a-box position="0 0.05 0" rotation="-90 0 0"
-      width="2.8" height="3.6" depth="0.01"
-      color="#0d1117" opacity="0.9" material="transparent:true">
+      width="2.2" height="2.8" depth="0.01"
+      color="#0d1117" opacity="0.92"
+      material="transparent:true">
     </a-box>
 
-    <!-- Línea borde verde arriba -->
-    <a-box position="0 0.06 -1.7" rotation="-90 0 0"
-      width="2.6" height="0.04" depth="0.01" color="#4ade80">
+    <!-- Borde superior verde -->
+    <a-box position="0 0.06 -1.35" rotation="-90 0 0"
+      width="2.0" height="0.05" depth="0.01" color="#4ade80">
     </a-box>
 
     <!-- TÍTULO -->
-    <a-text id="t-titulo" value="BIOGERMINADOR"
-      position="0 0.1 -1.45" rotation="-90 0 0"
-      align="center" color="#4ade80" width="5">
+    <a-text value="BIOGERMINADOR"
+      position="0 0.1 -1.15" rotation="-90 0 0"
+      align="center" color="#4ade80" width="4">
+    </a-text>
+    <a-text value="Sistema de Riego IoT"
+      position="0 0.1 -0.9" rotation="-90 0 0"
+      align="center" color="#475569" width="2.8">
     </a-text>
 
-    <!-- TEMPERATURA label -->
+    <!-- Separador -->
+    <a-box position="0 0.06 -0.72" rotation="-90 0 0"
+      width="1.9" height="0.02" depth="0.01" color="#4ade80" opacity="0.4">
+    </a-box>
+
+    <!-- TEMPERATURA -->
     <a-text value="TEMPERATURA"
-      position="-0.8 0.1 -1.05" rotation="-90 0 0"
-      align="center" color="#64748b" width="2.5">
+      position="-0.62 0.1 -0.55" rotation="-90 0 0"
+      align="center" color="#64748b" width="1.8">
     </a-text>
-    <!-- TEMPERATURA valor -->
-    <a-text id="t-temp" value="--"
-      position="-0.8 0.1 -0.7" rotation="-90 0 0"
-      align="center" color="#ffffff" width="4">
+    <a-text id="t-temp" value="--°C"
+      position="-0.62 0.1 -0.28" rotation="-90 0 0"
+      align="center" color="#ffffff" width="3">
     </a-text>
 
-    <!-- HUMEDAD AIRE label -->
+    <!-- HUMEDAD AIRE -->
     <a-text value="HUM. AIRE"
-      position="0.8 0.1 -1.05" rotation="-90 0 0"
-      align="center" color="#64748b" width="2.5">
+      position="0.62 0.1 -0.55" rotation="-90 0 0"
+      align="center" color="#64748b" width="1.8">
     </a-text>
-    <!-- HUMEDAD AIRE valor -->
-    <a-text id="t-aire" value="--"
-      position="0.8 0.1 -0.7" rotation="-90 0 0"
-      align="center" color="#ffffff" width="4">
+    <a-text id="t-aire" value="--%"
+      position="0.62 0.1 -0.28" rotation="-90 0 0"
+      align="center" color="#ffffff" width="3">
     </a-text>
 
     <!-- Separador -->
-    <a-box position="0 0.06 -0.38" rotation="-90 0 0"
-      width="2.4" height="0.02" depth="0.01" color="#4ade80" opacity="0.4">
+    <a-box position="0 0.06 -0.08" rotation="-90 0 0"
+      width="1.9" height="0.02" depth="0.01" color="#4ade80" opacity="0.3">
     </a-box>
 
-    <!-- HUMEDAD SUELO label -->
+    <!-- HUMEDAD SUELO -->
     <a-text value="HUMEDAD SUELO"
-      position="0 0.1 -0.15" rotation="-90 0 0"
-      align="center" color="#64748b" width="3">
+      position="0 0.1 0.1" rotation="-90 0 0"
+      align="center" color="#64748b" width="2.4">
     </a-text>
-    <!-- HUMEDAD SUELO valor grande -->
-    <a-text id="t-suelo" value="--"
-      position="0 0.1 0.3" rotation="-90 0 0"
-      align="center" color="#4ade80" width="7">
+    <a-text id="t-suelo" value="--%"
+      position="0 0.1 0.42" rotation="-90 0 0"
+      align="center" color="#4ade80" width="5.5">
     </a-text>
-    <!-- ESTADO -->
-    <a-text id="t-estado" value="ESPERANDO..."
-      position="0 0.1 0.7" rotation="-90 0 0"
-      align="center" color="#f59e0b" width="3.5">
+    <a-text id="t-estado" value="ESPERANDO"
+      position="0 0.1 0.68" rotation="-90 0 0"
+      align="center" color="#f59e0b" width="2.8">
     </a-text>
 
     <!-- Separador -->
-    <a-box position="0 0.06 0.95" rotation="-90 0 0"
-      width="2.4" height="0.02" depth="0.01" color="#4ade80" opacity="0.4">
+    <a-box position="0 0.06 0.85" rotation="-90 0 0"
+      width="1.9" height="0.02" depth="0.01" color="#4ade80" opacity="0.3">
     </a-box>
 
-    <!-- BOMBA label -->
+    <!-- BOMBA -->
     <a-text value="BOMBA"
-      position="-0.8 0.1 1.18" rotation="-90 0 0"
-      align="center" color="#64748b" width="2.5">
+      position="-0.62 0.1 1.02" rotation="-90 0 0"
+      align="center" color="#64748b" width="1.8">
     </a-text>
     <a-text id="t-bomba" value="--"
-      position="-0.8 0.1 1.48" rotation="-90 0 0"
-      align="center" color="#60a5fa" width="3">
+      position="-0.62 0.1 1.25" rotation="-90 0 0"
+      align="center" color="#60a5fa" width="2.4">
     </a-text>
 
-    <!-- MODO label -->
+    <!-- MODO -->
     <a-text value="MODO"
-      position="0.8 0.1 1.18" rotation="-90 0 0"
-      align="center" color="#64748b" width="2.5">
+      position="0.62 0.1 1.02" rotation="-90 0 0"
+      align="center" color="#64748b" width="1.8">
     </a-text>
     <a-text id="t-modo" value="--"
-      position="0.8 0.1 1.48" rotation="-90 0 0"
-      align="center" color="#f59e0b" width="3">
+      position="0.62 0.1 1.25" rotation="-90 0 0"
+      align="center" color="#4ade80" width="2.4">
     </a-text>
 
-    <!-- Línea borde verde abajo -->
-    <a-box position="0 0.06 1.72" rotation="-90 0 0"
-      width="2.6" height="0.04" depth="0.01" color="#4ade80">
+    <!-- Borde inferior verde -->
+    <a-box position="0 0.06 1.38" rotation="-90 0 0"
+      width="2.0" height="0.05" depth="0.01" color="#4ade80">
     </a-box>
 
   </a-marker>
@@ -169,14 +204,21 @@
 
 <script>
 // ══════════════════════════════════════
-// CAMBIA ESTOS 3 VALORES
+//  CONFIGURACIÓN — cambia estos valores
 // ══════════════════════════════════════
 const BROKER = "wss://7da53a2d42d048f0aa05dd99cd58a710.s1.eu.hivemq.cloud:8884/mqtt";
-const USER   = "riego_user";    // tu usuario
-const PASS   = "Rog-sebas09"; // tu contraseña
+const USER   = "riego_user";
+const PASS   = "Rog-sebas09";
 
+// ══════════════════════════════════════
+//  ESTADO
+// ══════════════════════════════════════
 const datos = { temp:"--", aire:"--", suelo:"--", bomba:"--", modo:"--" };
+let mqttClient = null;
 
+// ══════════════════════════════════════
+//  ACTUALIZAR TEXTOS AR
+// ══════════════════════════════════════
 function set(id, val) {
   const el = document.getElementById(id);
   if (el) el.setAttribute("value", val);
@@ -185,48 +227,94 @@ function set(id, val) {
 function actualizar() {
   const s = parseFloat(datos.suelo);
   const colorSuelo = !isNaN(s) ? s<30?"#ef4444":s<60?"#f59e0b":"#4ade80" : "#ffffff";
-  const estadoTxt  = !isNaN(s) ? s<30?"⚠ CRITICO":s>=70?"✓ OPTIMO":"● NORMAL" : "ESPERANDO...";
+  const estadoTxt  = !isNaN(s) ? s<30?"⚠ CRITICO":s>=70?"✓ OPTIMO":"● NORMAL" : "ESPERANDO";
+  const modoColor  = datos.modo==="Auto" ? "#4ade80" : "#f59e0b";
 
-  // AR textos
-  set("t-temp",   datos.temp  !== "--" ? datos.temp+"°C"  : "--°C");
-  set("t-aire",   datos.aire  !== "--" ? datos.aire+"%"   : "--%");
-  set("t-suelo",  datos.suelo !== "--" ? datos.suelo+"%"  : "--%");
+  set("t-temp",   datos.temp  !== "--" ? datos.temp+"°C" : "--°C");
+  set("t-aire",   datos.aire  !== "--" ? datos.aire+"%" : "--%");
+  set("t-suelo",  datos.suelo !== "--" ? datos.suelo+"%" : "--%");
   set("t-estado", estadoTxt);
   set("t-bomba",  datos.bomba==="1" ? "ACTIVA" : datos.bomba==="0" ? "Apagada" : "--");
   set("t-modo",   datos.modo || "--");
 
-  // Color humedad suelo
   const ts = document.getElementById("t-suelo");
   if (ts) ts.setAttribute("color", colorSuelo);
   const te = document.getElementById("t-estado");
   if (te) te.setAttribute("color", colorSuelo);
+  const tm = document.getElementById("t-modo");
+  if (tm) tm.setAttribute("color", modoColor);
 
-  // Panel 2D
-  document.getElementById("vt").textContent = datos.temp  !== "--" ? datos.temp+"°C"  : "--°C";
-  document.getElementById("va").textContent = datos.aire  !== "--" ? datos.aire+"%"   : "--%";
-  const vs = document.getElementById("vs");
-  vs.textContent = datos.suelo !== "--" ? datos.suelo+"%" : "--%";
-  vs.className = "val" + (!isNaN(s) ? s<30?" red":s<60?" yellow":" green" : "");
-  document.getElementById("vb").textContent = datos.bomba==="1" ? "ACTIVA" : datos.bomba==="0" ? "Apagada" : "--";
-  const vm = document.getElementById("vm");
-  vm.textContent = datos.modo || "--";
-  vm.className = "badge" + (datos.modo==="Manual" ? " m" : "");
+  actualizarBotones();
 }
 
+// ══════════════════════════════════════
+//  ACTUALIZAR BOTONES
+// ══════════════════════════════════════
+function actualizarBotones() {
+  const btnBomba = document.getElementById("btn-bomba");
+  const btnModo  = document.getElementById("btn-modo");
+
+  // Botón modo
+  if (datos.modo === "Auto") {
+    btnModo.textContent = "⚙ MODO: AUTO";
+    btnModo.className = "btn";
+  } else {
+    btnModo.textContent = "⚙ MODO: MANUAL";
+    btnModo.className = "btn manual";
+  }
+
+  // Botón bomba
+  if (datos.modo === "Auto") {
+    // En modo auto la bomba no se puede controlar manualmente
+    btnBomba.textContent = "💦 BOMBA: AUTO";
+    btnBomba.className = "btn bloqueado";
+  } else if (datos.bomba === "1") {
+    btnBomba.textContent = "💦 BOMBA: ACTIVA";
+    btnBomba.className = "btn activa";
+  } else {
+    btnBomba.textContent = "💦 BOMBA: APAGADA";
+    btnBomba.className = "btn";
+  }
+}
+
+// ══════════════════════════════════════
+//  ACCIONES DE BOTONES
+// ══════════════════════════════════════
+function toggleBomba() {
+  if (!mqttClient || !mqttClient.connected) return;
+  if (datos.modo === "Auto") {
+    alert("Cambia a modo Manual para controlar la bomba");
+    return;
+  }
+  const nuevoEstado = datos.bomba === "1" ? "0" : "1";
+  mqttClient.publish("riego/control/bomba", nuevoEstado);
+}
+
+function toggleModo() {
+  if (!mqttClient || !mqttClient.connected) return;
+  const nuevoModo = datos.modo === "Auto" ? "manual" : "auto";
+  mqttClient.publish("riego/control/modo", nuevoModo);
+}
+
+// ══════════════════════════════════════
+//  MQTT
+// ══════════════════════════════════════
 function conectar() {
-  const c = mqtt.connect(BROKER, {
+  mqttClient = mqtt.connect(BROKER, {
     username: USER, password: PASS,
     clientId: "AR_" + Math.random().toString(16).substr(2,5),
     reconnectPeriod: 3000,
   });
+
   const dot = document.getElementById("mqtt-dot");
   const lbl = document.getElementById("mqtt-lbl");
 
-  c.on("connect", () => {
+  mqttClient.on("connect", () => {
     dot.className = "on"; lbl.textContent = "En vivo";
-    c.subscribe("riego/#");
+    mqttClient.subscribe("riego/#");
   });
-  c.on("message", (t, m) => {
+
+  mqttClient.on("message", (t, m) => {
     const v = m.toString();
     if (t==="riego/temperatura")  datos.temp  = v;
     if (t==="riego/humedadAire")  datos.aire  = v;
@@ -235,13 +323,28 @@ function conectar() {
     if (t==="riego/modo")         datos.modo  = v;
     actualizar();
   });
-  c.on("offline", () => { dot.className=""; lbl.textContent="Reconectando..."; });
-  c.on("error",   () => { dot.className=""; lbl.textContent="Error"; });
+
+  mqttClient.on("offline", () => { dot.className=""; lbl.textContent="Reconectando..."; });
+  mqttClient.on("error",   () => { dot.className=""; lbl.textContent="Error"; });
 }
 
+// ══════════════════════════════════════
+//  INICIO
+// ══════════════════════════════════════
 window.addEventListener("load", () => {
   conectar();
   actualizar();
+
+  // Ocultar hint cuando el marcador es detectado
+  const marker = document.getElementById("marker");
+  if (marker) {
+    marker.addEventListener("markerFound",  () => {
+      document.getElementById("hint").style.display = "none";
+    });
+    marker.addEventListener("markerLost", () => {
+      document.getElementById("hint").style.display = "block";
+    });
+  }
 });
 </script>
 </body>
