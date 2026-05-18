@@ -4,469 +4,244 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Biogerminador AR</title>
-
-  <!-- AR.js + A-Frame -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js"></script>
+  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
   <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-  <!-- MQTT.js para conectarse a HiveMQ desde el navegador -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
-
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: Arial, sans-serif; }
 
-    body { 
-      font-family: 'Segoe UI', sans-serif;
-      background: #000;
-      overflow: hidden;
-    }
-
-    /* ── HUD de estado (esquina superior) ── */
     #hud {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      z-index: 999;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      position: fixed; top: 0; left: 0; right: 0; z-index: 999;
+      display: flex; justify-content: space-between; align-items: center;
       padding: 10px 16px;
-      background: linear-gradient(180deg, rgba(0,0,0,0.75) 0%, transparent 100%);
+      background: linear-gradient(180deg,rgba(0,0,0,0.8),transparent);
     }
+    #hud-title { color: #4ade80; font-size: 14px; font-weight: bold; letter-spacing: 2px; }
+    #mqtt-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #fff; }
+    #mqtt-dot { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; }
+    #mqtt-dot.on { background: #4ade80; animation: blink 2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-    #hud-title {
-      color: #4ade80;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      text-transform: uppercase;
+    #panel {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 999; background: rgba(0,0,0,0.88);
+      border: 1.5px solid rgba(74,222,128,.4); border-radius: 16px;
+      padding: 14px 18px; min-width: 270px;
     }
-
-    #mqtt-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: #fff;
-    }
-
-    #mqtt-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: #ef4444;
-      transition: background 0.4s;
-    }
-    #mqtt-dot.connected { background: #4ade80; animation: pulse 2s infinite; }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.4; }
-    }
-
-    /* ── Panel de datos (cuando no hay marcador) ── */
-    #data-panel {
-      position: fixed;
-      bottom: 20px; left: 50%;
-      transform: translateX(-50%);
-      z-index: 999;
-      background: rgba(0,0,0,0.82);
-      border: 1px solid rgba(74,222,128,0.35);
-      border-radius: 16px;
-      padding: 14px 20px;
-      min-width: 280px;
-      backdrop-filter: blur(10px);
-    }
-
-    #data-panel h3 {
-      color: #4ade80;
-      font-size: 11px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 10px;
-      text-align: center;
-    }
-
-    .data-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
-    .data-item {
-      background: rgba(255,255,255,0.05);
-      border-radius: 10px;
-      padding: 8px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .data-label {
-      font-size: 9px;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    .data-value {
-      font-size: 18px;
-      font-weight: 700;
-      color: #fff;
-    }
-
-    .data-value.warning { color: #f59e0b; }
-    .data-value.critical { color: #ef4444; }
-    .data-value.ok { color: #4ade80; }
-
-    .data-item.full-width {
-      grid-column: 1 / -1;
-      flex-direction: row;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .badge {
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 10px;
-      border-radius: 20px;
-      background: rgba(74,222,128,0.15);
-      color: #4ade80;
-      border: 1px solid rgba(74,222,128,0.3);
-    }
-    .badge.manual {
-      background: rgba(245,158,11,0.15);
-      color: #f59e0b;
-      border-color: rgba(245,158,11,0.3);
-    }
-    .badge.bomba-on {
-      background: rgba(59,130,246,0.2);
-      color: #60a5fa;
-      border-color: rgba(59,130,246,0.3);
-      animation: pulse 1s infinite;
-    }
-
-    #hint {
-      text-align: center;
-      color: #64748b;
-      font-size: 11px;
-      margin-top: 10px;
-    }
-
-    /* Ocultar botón de fullscreen de AR.js */
-    .a-enter-vr { display: none !important; }
+    #panel h3 { color: #4ade80; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; text-align: center; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .card { background: rgba(255,255,255,.05); border-radius: 10px; padding: 8px 10px; }
+    .lbl { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; display: block; }
+    .val { font-size: 20px; font-weight: bold; color: #fff; display: block; }
+    .red { color: #ef4444; } .yellow { color: #f59e0b; } .green { color: #4ade80; }
+    .wide { grid-column: 1/-1; display: flex; justify-content: space-between; align-items: center; }
+    .badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+             background: rgba(74,222,128,.15); color: #4ade80; border: 1px solid rgba(74,222,128,.3); }
+    .badge.m { background: rgba(245,158,11,.15); color: #f59e0b; border-color: rgba(245,158,11,.3); }
+    #hint { text-align: center; color: #475569; font-size: 10px; margin-top: 9px; }
+    .a-enter-vr, .a-enter-vr-button { display: none !important; }
   </style>
 </head>
 <body>
 
-<!-- ── HUD superior ── -->
 <div id="hud">
-  <span id="hud-title">🌱 Biogerminador AR</span>
+  <span id="hud-title">🌱 BIOGERMINADOR AR</span>
   <div id="mqtt-status">
     <div id="mqtt-dot"></div>
-    <span id="mqtt-label">Conectando...</span>
+    <span id="mqtt-lbl">Conectando...</span>
   </div>
 </div>
 
-<!-- ── Panel de datos 2D (siempre visible abajo) ── -->
-<div id="data-panel">
+<div id="panel">
   <h3>Datos en tiempo real</h3>
-  <div class="data-grid">
-    <div class="data-item">
-      <span class="data-label">🌡️ Temperatura</span>
-      <span class="data-value" id="val-temp">--°C</span>
-    </div>
-    <div class="data-item">
-      <span class="data-label">💧 Hum. Aire</span>
-      <span class="data-value" id="val-humaire">--%</span>
-    </div>
-    <div class="data-item">
-      <span class="data-label">🌱 Hum. Suelo</span>
-      <span class="data-value" id="val-humsuelo">--%</span>
-    </div>
-    <div class="data-item">
-      <span class="data-label">💦 Bomba</span>
-      <span class="data-value" id="val-bomba">--</span>
-    </div>
-    <div class="data-item full-width">
-      <span class="data-label">⚙️ Modo operación</span>
-      <span class="badge" id="val-modo">--</span>
-    </div>
+  <div class="grid">
+    <div class="card"><span class="lbl">🌡 Temperatura</span><span class="val" id="vt">--°C</span></div>
+    <div class="card"><span class="lbl">💧 Hum. Aire</span><span class="val" id="va">--%</span></div>
+    <div class="card"><span class="lbl">🌱 Hum. Suelo</span><span class="val" id="vs">--%</span></div>
+    <div class="card"><span class="lbl">💦 Bomba</span><span class="val" id="vb">--</span></div>
+    <div class="card wide"><span class="lbl">⚙ Modo</span><span class="badge" id="vm">--</span></div>
   </div>
-  <p id="hint">📷 Apunta al marcador para ver en AR</p>
+  <p id="hint">📷 Apunta al marcador Hiro</p>
 </div>
 
-<!-- ── Escena AR ── -->
 <a-scene
   embedded
-  arjs="sourceType: webcam; debugUIEnabled: false; detectionMode: mono_and_matrix; matrixCodeType: 3x3;"
-  renderer="logarithmicDepthBuffer: true; antialias: true;"
+  arjs="sourceType: webcam; debugUIEnabled: false;"
   vr-mode-ui="enabled: false"
+  renderer="antialias: true; alpha: true;"
 >
-  <!-- Marcador Hiro — el más fácil de imprimir -->
-  <a-marker preset="hiro" id="marker">
+  <a-marker preset="hiro">
 
-    <!-- Fondo del panel AR -->
-    <a-plane
-      position="0 0.01 0"
-      rotation="-90 0 0"
-      width="3.5" height="4.5"
-      color="#0a0f1e"
-      opacity="0.88"
-      material="transparent: true"
-    ></a-plane>
+    <!-- Fondo del panel -->
+    <a-box position="0 0.05 0" rotation="-90 0 0"
+      width="2.8" height="3.6" depth="0.01"
+      color="#0d1117" opacity="0.9" material="transparent:true">
+    </a-box>
 
-    <!-- Borde verde -->
-    <a-plane
-      position="0 0.005 0"
-      rotation="-90 0 0"
-      width="3.6" height="4.6"
-      color="#4ade80"
-      opacity="0.3"
-      material="transparent: true"
-    ></a-plane>
+    <!-- Línea borde verde arriba -->
+    <a-box position="0 0.06 -1.7" rotation="-90 0 0"
+      width="2.6" height="0.04" depth="0.01" color="#4ade80">
+    </a-box>
 
-    <!-- Título -->
-    <a-text
-      id="ar-title"
-      value="BIOGERMINADOR"
-      position="0 0.02 -1.8"
-      rotation="-90 0 0"
-      align="center"
-      color="#4ade80"
-      width="6"
-    ></a-text>
+    <!-- TÍTULO -->
+    <a-text id="t-titulo" value="BIOGERMINADOR"
+      position="0 0.1 -1.45" rotation="-90 0 0"
+      align="center" color="#4ade80" width="5">
+    </a-text>
 
-    <!-- Temperatura -->
-    <a-text
-      id="ar-temp-label"
-      value="TEMPERATURA"
-      position="-0.9 0.02 -1.1"
-      rotation="-90 0 0"
-      align="center"
-      color="#94a3b8"
-      width="3"
-    ></a-text>
-    <a-text
-      id="ar-temp"
-      value="--°C"
-      position="-0.9 0.02 -0.6"
-      rotation="-90 0 0"
-      align="center"
-      color="#ffffff"
-      width="5"
-    ></a-text>
+    <!-- TEMPERATURA label -->
+    <a-text value="TEMPERATURA"
+      position="-0.8 0.1 -1.05" rotation="-90 0 0"
+      align="center" color="#64748b" width="2.5">
+    </a-text>
+    <!-- TEMPERATURA valor -->
+    <a-text id="t-temp" value="--"
+      position="-0.8 0.1 -0.7" rotation="-90 0 0"
+      align="center" color="#ffffff" width="4">
+    </a-text>
 
-    <!-- Humedad aire -->
-    <a-text
-      id="ar-humaire-label"
-      value="HUM. AIRE"
-      position="0.9 0.02 -1.1"
-      rotation="-90 0 0"
-      align="center"
-      color="#94a3b8"
-      width="3"
-    ></a-text>
-    <a-text
-      id="ar-humaire"
-      value="--%"
-      position="0.9 0.02 -0.6"
-      rotation="-90 0 0"
-      align="center"
-      color="#ffffff"
-      width="5"
-    ></a-text>
+    <!-- HUMEDAD AIRE label -->
+    <a-text value="HUM. AIRE"
+      position="0.8 0.1 -1.05" rotation="-90 0 0"
+      align="center" color="#64748b" width="2.5">
+    </a-text>
+    <!-- HUMEDAD AIRE valor -->
+    <a-text id="t-aire" value="--"
+      position="0.8 0.1 -0.7" rotation="-90 0 0"
+      align="center" color="#ffffff" width="4">
+    </a-text>
 
-    <!-- Línea separadora -->
-    <a-plane
-      position="0 0.02 -0.2"
-      rotation="-90 0 0"
-      width="3.2" height="0.03"
-      color="#4ade80"
-      opacity="0.5"
-    ></a-plane>
+    <!-- Separador -->
+    <a-box position="0 0.06 -0.38" rotation="-90 0 0"
+      width="2.4" height="0.02" depth="0.01" color="#4ade80" opacity="0.4">
+    </a-box>
 
-    <!-- Humedad suelo -->
-    <a-text
-      id="ar-humsuelo-label"
-      value="HUMEDAD SUELO"
-      position="0 0.02 0.2"
-      rotation="-90 0 0"
-      align="center"
-      color="#94a3b8"
-      width="3.5"
-    ></a-text>
-    <a-text
-      id="ar-humsuelo"
-      value="--%"
-      position="0 0.02 0.8"
-      rotation="-90 0 0"
-      align="center"
-      color="#4ade80"
-      width="7"
-    ></a-text>
+    <!-- HUMEDAD SUELO label -->
+    <a-text value="HUMEDAD SUELO"
+      position="0 0.1 -0.15" rotation="-90 0 0"
+      align="center" color="#64748b" width="3">
+    </a-text>
+    <!-- HUMEDAD SUELO valor grande -->
+    <a-text id="t-suelo" value="--"
+      position="0 0.1 0.3" rotation="-90 0 0"
+      align="center" color="#4ade80" width="7">
+    </a-text>
+    <!-- ESTADO -->
+    <a-text id="t-estado" value="ESPERANDO..."
+      position="0 0.1 0.7" rotation="-90 0 0"
+      align="center" color="#f59e0b" width="3.5">
+    </a-text>
 
-    <!-- Estado suelo -->
-    <a-text
-      id="ar-estado"
-      value="ESPERANDO..."
-      position="0 0.02 1.3"
-      rotation="-90 0 0"
-      align="center"
-      color="#f59e0b"
-      width="4"
-    ></a-text>
+    <!-- Separador -->
+    <a-box position="0 0.06 0.95" rotation="-90 0 0"
+      width="2.4" height="0.02" depth="0.01" color="#4ade80" opacity="0.4">
+    </a-box>
 
-    <!-- Línea separadora 2 -->
-    <a-plane
-      position="0 0.02 1.6"
-      rotation="-90 0 0"
-      width="3.2" height="0.03"
-      color="#4ade80"
-      opacity="0.5"
-    ></a-plane>
+    <!-- BOMBA label -->
+    <a-text value="BOMBA"
+      position="-0.8 0.1 1.18" rotation="-90 0 0"
+      align="center" color="#64748b" width="2.5">
+    </a-text>
+    <a-text id="t-bomba" value="--"
+      position="-0.8 0.1 1.48" rotation="-90 0 0"
+      align="center" color="#60a5fa" width="3">
+    </a-text>
 
-    <!-- Bomba y modo -->
-    <a-text
-      id="ar-bomba"
-      value="BOMBA: --"
-      position="-0.8 0.02 2.0"
-      rotation="-90 0 0"
-      align="center"
-      color="#60a5fa"
-      width="3.5"
-    ></a-text>
+    <!-- MODO label -->
+    <a-text value="MODO"
+      position="0.8 0.1 1.18" rotation="-90 0 0"
+      align="center" color="#64748b" width="2.5">
+    </a-text>
+    <a-text id="t-modo" value="--"
+      position="0.8 0.1 1.48" rotation="-90 0 0"
+      align="center" color="#f59e0b" width="3">
+    </a-text>
 
-    <a-text
-      id="ar-modo"
-      value="MODO: --"
-      position="0.8 0.02 2.0"
-      rotation="-90 0 0"
-      align="center"
-      color="#f59e0b"
-      width="3.5"
-    ></a-text>
+    <!-- Línea borde verde abajo -->
+    <a-box position="0 0.06 1.72" rotation="-90 0 0"
+      width="2.6" height="0.04" depth="0.01" color="#4ade80">
+    </a-box>
 
   </a-marker>
-
   <a-entity camera></a-entity>
 </a-scene>
 
 <script>
-// ════════════════════════════════════════
-//  CONFIGURACIÓN — cambia estos valores
-// ════════════════════════════════════════
-const MQTT_BROKER = "wss://7da53a2d42d048f0aa05dd99cd58a710.s1.eu.hivemq.cloud:8884/mqtt"; // Cambia esto
-const MQTT_USER   = "riego_user";      // Cambia esto
-const MQTT_PASS   = "Rog-sebas09";   // Cambia esto
+// ══════════════════════════════════════
+// CAMBIA ESTOS 3 VALORES
+// ══════════════════════════════════════
+const BROKER = "wss://7da53a2d42d048f0aa05dd99cd58a710.s1.eu.hivemq.cloud:8884/mqtt";
+const USER   = "riego_user";    // tu usuario
+const PASS   = "Rog-sebas09"; // tu contraseña
 
-// ════════════════════════════════════════
-//  DATOS
-// ════════════════════════════════════════
-const datos = {
-  temperatura:  "--",
-  humedadAire:  "--",
-  humedadSuelo: "--",
-  bomba:        "--",
-  modo:         "--",
-};
+const datos = { temp:"--", aire:"--", suelo:"--", bomba:"--", modo:"--" };
 
-// ════════════════════════════════════════
-//  ACTUALIZAR UI 2D
-// ════════════════════════════════════════
-function actualizarUI() {
-  const suelo = parseFloat(datos.humedadSuelo);
+function set(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.setAttribute("value", val);
+}
+
+function actualizar() {
+  const s = parseFloat(datos.suelo);
+  const colorSuelo = !isNaN(s) ? s<30?"#ef4444":s<60?"#f59e0b":"#4ade80" : "#ffffff";
+  const estadoTxt  = !isNaN(s) ? s<30?"⚠ CRITICO":s>=70?"✓ OPTIMO":"● NORMAL" : "ESPERANDO...";
+
+  // AR textos
+  set("t-temp",   datos.temp  !== "--" ? datos.temp+"°C"  : "--°C");
+  set("t-aire",   datos.aire  !== "--" ? datos.aire+"%"   : "--%");
+  set("t-suelo",  datos.suelo !== "--" ? datos.suelo+"%"  : "--%");
+  set("t-estado", estadoTxt);
+  set("t-bomba",  datos.bomba==="1" ? "ACTIVA" : datos.bomba==="0" ? "Apagada" : "--");
+  set("t-modo",   datos.modo || "--");
+
+  // Color humedad suelo
+  const ts = document.getElementById("t-suelo");
+  if (ts) ts.setAttribute("color", colorSuelo);
+  const te = document.getElementById("t-estado");
+  if (te) te.setAttribute("color", colorSuelo);
 
   // Panel 2D
-  document.getElementById("val-temp").textContent     = datos.temperatura !== "--" ? datos.temperatura + "°C" : "--°C";
-  document.getElementById("val-humaire").textContent  = datos.humedadAire !== "--"  ? datos.humedadAire + "%" : "--%";
-  
-  const elSuelo = document.getElementById("val-humsuelo");
-  elSuelo.textContent = datos.humedadSuelo !== "--" ? datos.humedadSuelo + "%" : "--%";
-  elSuelo.className = "data-value";
-  if (!isNaN(suelo)) {
-    if (suelo < 30) elSuelo.classList.add("critical");
-    else if (suelo < 50) elSuelo.classList.add("warning");
-    else elSuelo.classList.add("ok");
-  }
-
-  const elBomba = document.getElementById("val-bomba");
-  elBomba.textContent = datos.bomba === "1" ? "ACTIVA" : datos.bomba === "0" ? "Apagada" : "--";
-  elBomba.className = "data-value" + (datos.bomba === "1" ? " ok" : "");
-
-  const elModo = document.getElementById("val-modo");
-  elModo.textContent = datos.modo;
-  elModo.className = "badge" + (datos.modo === "Manual" ? " manual" : "");
-  if (datos.bomba === "1") elModo.classList.add("bomba-on");
-
-  // ── Actualizar textos AR ──
-  const estadoTexto = !isNaN(suelo)
-    ? suelo < 30 ? "⚠️ CRITICO" : suelo >= 70 ? "✅ OPTIMO" : "🔵 NORMAL"
-    : "ESPERANDO...";
-
-  setText("ar-temp",      datos.temperatura !== "--" ? datos.temperatura + "°C" : "--°C");
-  setText("ar-humaire",   datos.humedadAire !== "--"  ? datos.humedadAire + "%" : "--%");
-  setText("ar-humsuelo",  datos.humedadSuelo !== "--" ? datos.humedadSuelo + "%" : "--%");
-  setText("ar-estado",    estadoTexto);
-  setText("ar-bomba",     "BOMBA: " + (datos.bomba === "1" ? "ACTIVA" : datos.bomba === "0" ? "Apagada" : "--"));
-  setText("ar-modo",      "MODO: " + (datos.modo || "--"));
+  document.getElementById("vt").textContent = datos.temp  !== "--" ? datos.temp+"°C"  : "--°C";
+  document.getElementById("va").textContent = datos.aire  !== "--" ? datos.aire+"%"   : "--%";
+  const vs = document.getElementById("vs");
+  vs.textContent = datos.suelo !== "--" ? datos.suelo+"%" : "--%";
+  vs.className = "val" + (!isNaN(s) ? s<30?" red":s<60?" yellow":" green" : "");
+  document.getElementById("vb").textContent = datos.bomba==="1" ? "ACTIVA" : datos.bomba==="0" ? "Apagada" : "--";
+  const vm = document.getElementById("vm");
+  vm.textContent = datos.modo || "--";
+  vm.className = "badge" + (datos.modo==="Manual" ? " m" : "");
 }
 
-function setText(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.setAttribute("value", value);
-}
-
-// ════════════════════════════════════════
-//  CONEXIÓN MQTT
-// ════════════════════════════════════════
-function conectarMQTT() {
-  const client = mqtt.connect(MQTT_BROKER, {
-    username: MQTT_USER,
-    password: MQTT_PASS,
-    clientId: "BiogerminadorAR_" + Math.random().toString(16).substr(2, 6),
+function conectar() {
+  const c = mqtt.connect(BROKER, {
+    username: USER, password: PASS,
+    clientId: "AR_" + Math.random().toString(16).substr(2,5),
     reconnectPeriod: 3000,
   });
+  const dot = document.getElementById("mqtt-dot");
+  const lbl = document.getElementById("mqtt-lbl");
 
-  const dot   = document.getElementById("mqtt-dot");
-  const label = document.getElementById("mqtt-label");
-
-  client.on("connect", () => {
-    dot.classList.add("connected");
-    label.textContent = "En vivo";
-
-    // Suscribirse a todos los tópicos del riego
-    client.subscribe("riego/#");
+  c.on("connect", () => {
+    dot.className = "on"; lbl.textContent = "En vivo";
+    c.subscribe("riego/#");
   });
-
-  client.on("message", (topic, message) => {
-    const valor = message.toString();
-    switch (topic) {
-      case "riego/temperatura":  datos.temperatura  = valor; break;
-      case "riego/humedadAire":  datos.humedadAire  = valor; break;
-      case "riego/humedadSuelo": datos.humedadSuelo = valor; break;
-      case "riego/bomba":        datos.bomba        = valor; break;
-      case "riego/modo":         datos.modo         = valor; break;
-    }
-    actualizarUI();
+  c.on("message", (t, m) => {
+    const v = m.toString();
+    if (t==="riego/temperatura")  datos.temp  = v;
+    if (t==="riego/humedadAire")  datos.aire  = v;
+    if (t==="riego/humedadSuelo") datos.suelo = v;
+    if (t==="riego/bomba")        datos.bomba = v;
+    if (t==="riego/modo")         datos.modo  = v;
+    actualizar();
   });
-
-  client.on("error", (err) => {
-    dot.classList.remove("connected");
-    label.textContent = "Error conexión";
-    console.error("MQTT error:", err);
-  });
-
-  client.on("offline", () => {
-    dot.classList.remove("connected");
-    label.textContent = "Reconectando...";
-  });
+  c.on("offline", () => { dot.className=""; lbl.textContent="Reconectando..."; });
+  c.on("error",   () => { dot.className=""; lbl.textContent="Error"; });
 }
 
-// ════════════════════════════════════════
-//  INICIO
-// ════════════════════════════════════════
 window.addEventListener("load", () => {
-  conectarMQTT();
-  actualizarUI();
+  conectar();
+  actualizar();
 });
 </script>
 </body>
